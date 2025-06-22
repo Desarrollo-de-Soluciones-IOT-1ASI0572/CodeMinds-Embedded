@@ -1,6 +1,6 @@
 {
   "name": "gps-neo6m",
-  "author": "Paolo Martinez",
+  "author": "CodeMinds",
   "pins": [
     "GND",
     "TX",
