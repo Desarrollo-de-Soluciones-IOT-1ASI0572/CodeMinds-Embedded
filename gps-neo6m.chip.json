@@ -1,0 +1,15 @@
+{
+  "name": "gps-neo6m",
+  "author": "Paolo Martinez",
+  "pins": [
+    "GND",
+    "TX",
+    "RX",
+    "VCC",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "controls": []
+}

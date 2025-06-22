@@ -1,0 +1,22 @@
+{
+  "name": "rfid",
+  "author": "Paolo Martinez",
+  "pins": [
+    "SDA",
+    "SCK",
+    "MOSI",
+    "MISO",
+    " ",
+    "RST",
+    "GND",
+    "VCC",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "controls": []
+}
