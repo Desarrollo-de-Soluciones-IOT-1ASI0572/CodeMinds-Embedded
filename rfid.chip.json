@@ -1,6 +1,6 @@
 {
   "name": "rfid",
-  "author": "Paolo Martinez",
+  "author": "CodeMinds",
   "pins": [
     "SDA",
     "SCK",
