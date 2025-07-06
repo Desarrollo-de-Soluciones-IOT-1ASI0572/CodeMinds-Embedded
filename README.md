@@ -1,1 +1,0 @@
-EduGo Embedded Application
