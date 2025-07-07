@@ -170,6 +170,7 @@ public:
   bool isRegistered() const;
   String getMacAddress() const;
   void checkConnection();
+  bool registerDevice();
 };
 
 // ================== DISPOSITIVO PRINCIPAL ==================
@@ -303,7 +304,7 @@ CommunicationHandler::CommunicationHandler(const String &ssid, const String &pas
                                            const String &trackingUrl, const String &iamUrl,
                                            const String &sensorUrl, const String &key)
     : wifiSSID(ssid), wifiPassword(password), trackingEndpoint(trackingUrl),
-      iamEndpoint(rfidUrl), sensorScanEndpoint(sensorUrl), apiKey(key),
+      iamEndpoint(iamUrl), sensorScanEndpoint(sensorUrl), apiKey(key),
       isConnected(false), isDeviceRegistered(false)
 {
   macAddress = WiFi.macAddress();
