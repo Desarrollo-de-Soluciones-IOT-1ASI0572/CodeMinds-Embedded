@@ -1,90 +1,213 @@
 /**
- * @file GpsSensor.cpp
- * @brief Implements the GpsSensor class (simulated NMEA).
- *
- * Simulates GPS data by injecting NMEA sentences from a static array.
- * Generates events when new valid location data is available.
- *
- * @author Angel Velasquez
- * @date March 22, 2025
- * @version 0.1
+ * @file GPSSensor.cpp
+ * @brief Implementation of GPS sensor for Wokwi using NMEA data
  */
 
-/*
- * This file is part of the Modest IoT Nano-framework (C++ Edition).
- * Copyright (c) 2025 Angel Velasquez
- *
- * Licensed under the Creative Commons Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0).
- * You may use, copy, and distribute this software in its original, unmodified form, provided
- * you give appropriate credit to the original author (Angel Velasquez) and include this notice.
- * Modifications, adaptations, or derivative works are not permitted.
- *
- * Full license text: https://creativecommons.org/licenses/by-nd/4.0/legalcode
- */
+#include "GPSSensor.h"
+#include <WiFi.h>
+#include <time.h>
 
-#include "GpsSensor.h"
-#include <Arduino.h>
-
-const char* GpsSensor::nmeaSentences[] = {
-    "$GPGGA,172914.049,2327.985,S,05150.410,W,1,12,1.0,0.0,M,0.0,M,,*60\r\n",
-    "$GPGSA,A,3,01,02,03,04,05,06,07,08,09,10,11,12,1.0,1.0,1.0*30\r\n",
-    "$GPRMC,172914.049,A,2327.985,S,05150.410,W,009.7,025.9,060622,000.0,W*74\r\n",
-    "$GPGGA,172915.049,2327.982,S,05150.409,W,1,12,1.0,0.0,M,0.0,M,,*6E\r\n",
-    "$GPGSA,A,3,01,02,03,04,05,06,07,08,09,10,11,12,1.0,1.0,1.0*30\r\n",
-    "$GPRMC,172915.049,A,2327.982,S,05150.409,W,009.7,025.9,060622,000.0,W*7A\r\n",
-    "$GPGGA,172916.049,2327.980,S,05150.408,W,1,12,1.0,0.0,M,0.0,M,,*6E\r\n",
-    "$GPGSA,A,3,01,02,03,04,05,06,07,08,09,10,11,12,1.0,1.0,1.0*30\r\n",
-    "$GPRMC,172916.049,A,2327.980,S,05150.408,W,009.7,025.9,060622,000.0,W*7A\r\n"
-    // Puedes agregar más frases si lo deseas
-};
-const int GpsSensor::nmeaCount = sizeof(GpsSensor::nmeaSentences) / sizeof(GpsSensor::nmeaSentences[0]);
-const Event GpsSensor::GPS_DATA_EVENT = Event(GPS_DATA_EVENT_ID);
-
-GpsSensor::GpsSensor(int rxPin, int txPin, unsigned long updateInterval, EventHandler *eventHandler)
-    : Sensor(-1, eventHandler), updateInterval(updateInterval), lastUpdate(0), nmeaIndex(0)
+GPSSensor::GPSSensor(int rxPin, int txPin, EventHandler *handler)
+    : deviceHandler(handler), lastUpdate(0), updateInterval(2000)
 {
-    lastValidData.isValid = false;
+    gpsSerial = new HardwareSerial(2);
+    gpsSerial->begin(9600, SERIAL_8N1, rxPin, txPin);
+
+    lastData.isValid = false;
+    lastData.latitude = 0.0;
+    lastData.longitude = 0.0;
+    lastData.speed = 0.0;
+    nmeaBuffer = "";
+
+    Serial.println("GPS Sensor inicializado para Wokwi");
 }
 
-void GpsSensor::update()
+void GPSSensor::update()
 {
-    // Simula la llegada de una frase NMEA cada intervalo
-    if (millis() - lastUpdate > updateInterval)
+    if (millis() - lastUpdate < updateInterval)
     {
-        const char* nmea = nmeaSentences[nmeaIndex];
-        for (size_t i = 0; i < strlen(nmea); ++i) {
-            gps.encode(nmea[i]);
-        }
-        nmeaIndex = (nmeaIndex + 1) % nmeaCount;
+        return;
+    }
 
-        if (gps.location.isValid())
+    // Leer datos NMEA del custom chip de Wokwi
+    while (gpsSerial->available() > 0)
+    {
+        char c = gpsSerial->read();
+
+        if (c == '\n')
         {
-            lastValidData.latitude = gps.location.lat();
-            lastValidData.longitude = gps.location.lng();
-            lastValidData.isValid = true;
+            // Procesar la línea NMEA completa
+            if (parseNMEA(nmeaBuffer))
+            {
+                lastData.timestamp = getTimestamp();
 
-            // Generate timestamp
-            time_t now = time(nullptr);
-            struct tm timeinfo;
-            char buf[30];
-            gmtime_r(&now, &timeinfo);
-            strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
-            lastValidData.timestamp = String(buf);
+                Serial.print("GPS - Latitud: ");
+                Serial.print(lastData.latitude, 6);
+                Serial.print(", Longitud: ");
+                Serial.print(lastData.longitude, 6);
+                Serial.print(", Velocidad: ");
+                Serial.println(lastData.speed, 2);
 
-            lastUpdate = millis();
+                // Notificar al dispositivo principal
+                Event gpsEvent(GPSEventIds::GPS_DATA_READY);
+                deviceHandler->on(gpsEvent);
 
-            // Trigger GPS data event
-            on(GPS_DATA_EVENT);
+                lastUpdate = millis();
+            }
+            nmeaBuffer = "";
+        }
+        else if (c != '\r')
+        {
+            nmeaBuffer += c;
         }
     }
 }
 
-GpsData GpsSensor::getLastData() const
+bool GPSSensor::parseNMEA(const String &nmea)
 {
-    return lastValidData;
+    if (nmea.startsWith("$GPGGA"))
+    {
+        return parseGPGGA(nmea);
+    }
+    else if (nmea.startsWith("$GPRMC"))
+    {
+        return parseGPRMC(nmea);
+    }
+    return false;
 }
 
-bool GpsSensor::hasValidFix() const
+bool GPSSensor::parseGPGGA(const String &sentence)
 {
-    return lastValidData.isValid && gps.location.isValid();
+    // Parsear $GPGGA,time,lat,N/S,lon,E/W,quality,numSat,hdop,alt,M,geoidal,M,dgpsAge,dgpsID*checksum
+    int commaIndex[14];
+    int commaCount = 0;
+
+    // Encontrar todas las comas
+    for (int i = 0; i < sentence.length() && commaCount < 14; i++)
+    {
+        if (sentence.charAt(i) == ',')
+        {
+            commaIndex[commaCount++] = i;
+        }
+    }
+
+    if (commaCount < 6)
+        return false;
+
+    // Extraer latitud (campo 2)
+    String latStr = sentence.substring(commaIndex[1] + 1, commaIndex[2]);
+    String latDir = sentence.substring(commaIndex[2] + 1, commaIndex[3]);
+
+    // Extraer longitud (campo 4)
+    String lonStr = sentence.substring(commaIndex[3] + 1, commaIndex[4]);
+    String lonDir = sentence.substring(commaIndex[4] + 1, commaIndex[5]);
+
+    // Extraer quality (campo 6)
+    String qualityStr = sentence.substring(commaIndex[5] + 1, commaIndex[6]);
+
+    if (latStr.length() > 0 && lonStr.length() > 0 && qualityStr.toInt() > 0)
+    {
+        lastData.latitude = parseCoordinate(latStr, latDir);
+        lastData.longitude = parseCoordinate(lonStr, lonDir);
+        lastData.isValid = true;
+        return true;
+    }
+
+    return false;
+}
+
+bool GPSSensor::parseGPRMC(const String &sentence)
+{
+    // Parsear $GPRMC,time,status,lat,N/S,lon,E/W,speed,course,date,magVar,magVarDir*checksum
+    int commaIndex[12];
+    int commaCount = 0;
+
+    for (int i = 0; i < sentence.length() && commaCount < 12; i++)
+    {
+        if (sentence.charAt(i) == ',')
+        {
+            commaIndex[commaCount++] = i;
+        }
+    }
+
+    if (commaCount < 7)
+        return false;
+
+    // Extraer status (campo 2)
+    String status = sentence.substring(commaIndex[1] + 1, commaIndex[2]);
+    if (status != "A")
+        return false; // A = Active, V = Void
+
+    // Extraer velocidad (campo 7)
+    String speedStr = sentence.substring(commaIndex[6] + 1, commaIndex[7]);
+    if (speedStr.length() > 0)
+    {
+        lastData.speed = speedStr.toFloat() * 1.852; // Convertir nudos a km/h
+        return true;
+    }
+
+    return false;
+}
+
+double GPSSensor::parseCoordinate(const String &coord, const String &direction)
+{
+    if (coord.length() < 4)
+        return 0.0;
+
+    // Formato: DDMM.MMMM o DDDMM.MMMM
+    int dotIndex = coord.indexOf('.');
+    if (dotIndex == -1)
+        return 0.0;
+
+    String degreeStr, minuteStr;
+
+    if (dotIndex == 4)
+    { // Latitud: DDMM.MMMM
+        degreeStr = coord.substring(0, 2);
+        minuteStr = coord.substring(2);
+    }
+    else if (dotIndex == 5)
+    { // Longitud: DDDMM.MMMM
+        degreeStr = coord.substring(0, 3);
+        minuteStr = coord.substring(3);
+    }
+    else
+    {
+        return 0.0;
+    }
+
+    double degrees = degreeStr.toFloat();
+    double minutes = minuteStr.toFloat();
+    double result = degrees + (minutes / 60.0);
+
+    if (direction == "S" || direction == "W")
+    {
+        result = -result;
+    }
+
+    return result;
+}
+
+String GPSSensor::getTimestamp()
+{
+    time_t now = time(nullptr);
+    struct tm *timeinfo = localtime(&now);
+    char buffer[30];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", timeinfo);
+    return String(buffer);
+}
+
+GPSData GPSSensor::getLastData() const
+{
+    return lastData;
+}
+
+void GPSSensor::on(Event event)
+{
+    // No procesa eventos directamente
+}
+
+GPSSensor::~GPSSensor()
+{
+    delete gpsSerial;
 }

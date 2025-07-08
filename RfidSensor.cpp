@@ -1,72 +1,74 @@
 /**
- * @file RfidSensor.cpp
- * @brief Implements the RfidSensor class.
- *
- * Simulates RFID card detection and event generation in the Modest IoT Nano-framework.
- * Randomly selects from predefined RFID codes to simulate real-world behavior.
- *
- * @author Angel Velasquez
- * @date March 22, 2025
- * @version 0.1
+ * @file RFIDSensor.cpp
+ * @brief Implementation of RFID sensor for Wokwi with configurable RFID code
  */
 
-/*
- * This file is part of the Modest IoT Nano-framework (C++ Edition).
- * Copyright (c) 2025 Angel Velasquez
- *
- * Licensed under the Creative Commons Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0).
- * You may use, copy, and distribute this software in its original, unmodified form, provided
- * you give appropriate credit to the original author (Angel Velasquez) and include this notice.
- * Modifications, adaptations, or derivative works are not permitted.
- *
- * Full license text: https://creativecommons.org/licenses/by-nd/4.0/legalcode
- */
+#include "RFIDSensor.h"
 
-#include "RfidSensor.h"
-#include <Arduino.h>
-
-const Event RfidSensor::RFID_DETECTED_EVENT = Event(RFID_DETECTED_EVENT_ID);
-
-RfidSensor::RfidSensor(int pin, unsigned long scanInterval, EventHandler *eventHandler)
-    : Sensor(pin, eventHandler), scanInterval(scanInterval), lastScan(0), codeCount(0)
+RFIDSensor::RFIDSensor(int pin, const String &rfidCode, const String &deviceId, EventHandler *handler)
+    : deviceHandler(handler), lastScan(0), scanInterval(5000), 
+      assignedRFIDCode(rfidCode), deviceId(deviceId)
 {
     lastDetection.isValid = false;
+    lastDetection.rfidCode = "";
+
+    Serial.println("RFID Sensor inicializado para Wokwi");
+    Serial.print("Device ID: ");
+    Serial.println(deviceId);
+    Serial.print("Código RFID asignado: ");
+    Serial.println(assignedRFIDCode);
 }
 
-void RfidSensor::addRfidCode(const String &code)
-{
-    if (codeCount < 10)
-    {
-        availableCodes[codeCount] = code;
-        codeCount++;
-    }
-}
-
-void RfidSensor::simulateScan()
-{
-    if (codeCount > 0)
-    {
-        int index = random(0, codeCount);
-        lastDetection.rfidCode = availableCodes[index];
-        lastDetection.scanType = "ENTRY";
-        lastDetection.isValid = true;
-
-        lastScan = millis();
-
-        // Trigger RFID detection event
-        on(RFID_DETECTED_EVENT);
-    }
-}
-
-void RfidSensor::update()
+void RFIDSensor::update()
 {
     if (millis() - lastScan >= scanInterval)
     {
-        simulateScan();
+        simulateCardDetection();
+        lastScan = millis();
     }
 }
 
-RfidData RfidSensor::getLastDetection() const
+void RFIDSensor::simulateCardDetection()
+{
+    // Simular detección del RFID asignado a este dispositivo (30% de probabilidad)
+    if (random(100) < 30)
+    {
+        // Usar el código RFID asignado específicamente a este dispositivo
+        lastDetection.rfidCode = assignedRFIDCode;
+        lastDetection.isValid = true;
+
+        Serial.print("RFID detectado - Device: ");
+        Serial.print(deviceId);
+        Serial.print(" | UID: ");
+        Serial.println(lastDetection.rfidCode);
+
+        // Notificar al dispositivo principal
+        Event rfidEvent(RFIDEventIds::RFID_DETECTED);
+        deviceHandler->on(rfidEvent);
+    }
+}
+
+RFIDData RFIDSensor::getLastDetection() const
 {
     return lastDetection;
+}
+
+String RFIDSensor::getAssignedRFID() const
+{
+    return assignedRFIDCode;
+}
+
+String RFIDSensor::getDeviceId() const
+{
+    return deviceId;
+}
+
+void RFIDSensor::on(Event event)
+{
+    // No procesa eventos directamente
+}
+
+RFIDSensor::~RFIDSensor()
+{
+    // No hay recursos dinámicos que liberar
 }

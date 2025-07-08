@@ -1,65 +1,43 @@
 /**
  * @file sketch.ino
- * @brief Main Arduino sketch using ModestIoT framework for GPS tracking and RFID scanning.
- *
- * This sketch demonstrates object-oriented programming with the ModestIoT framework,
- * implementing a complete tracking device with GPS and RFID capabilities using
- * events and commands for clean separation of concerns.
- *
- * @author Angel Velasquez (ModestIoT Framework)
- * @date March 22, 2025
- * @version 0.1
+ * @brief Simulación de 10 dispositivos EduGo
  */
 
-#include "ModestIoT.h"
+#include "TrackingDevice.h"
 
-// Pin definitions
-#define GPS_RX_PIN 16
-#define GPS_TX_PIN 17
-#define RFID_PIN 21
+// 10 dispositivos con sus códigos RFID específicos
+TrackingDevice* devices[10];
 
-// Network configuration
-#define WIFI_SSID "Wokwi-GUEST"
-#define WIFI_PASSWORD ""
-#define DEVICE_ID "HC2956"
-
-// Server endpoints
-#define TRACKING_ENDPOINT "http://host.wokwi.internal:5000/api/v1/tracking"
-#define RFID_ENDPOINT "http://host.wokwi.internal:5000/api/v1/sensor-scans/create"
-
-// Global tracking device instance
-TrackingDevice *trackingDevice;
-
-void setup()
-{
-  Serial.begin(115200);
-  Serial.println("=== ModestIoT Tracking Device ===");
-
-  // Initialize random seed
-  randomSeed(analogRead(0));
-
-  // Create tracking device with all configuration
-  trackingDevice = new TrackingDevice(
-      GPS_RX_PIN, GPS_TX_PIN, // GPS pins
-      RFID_PIN,               // RFID pin  
-      WIFI_SSID,              // WiFi credentials
-      WIFI_PASSWORD,
-      TRACKING_ENDPOINT, // Server endpoints
-      RFID_ENDPOINT,
-      DEVICE_ID // Device identifier
-  );
-
-  // Initialize the device
-  trackingDevice->initialize();
-
-  Serial.println("=== Setup Complete ===");
+void setup() {
+    Serial.begin(9600);
+    Serial.println("Inicializando 10 dispositivos EduGo...");
+    
+    // Crear los 10 dispositivos con solo deviceId y rfidCode
+    devices[0] = new TrackingDevice("EduGo-Device-01", "A3B7C921");
+    devices[1] = new TrackingDevice("EduGo-Device-02", "4F2D8E6A");
+    devices[2] = new TrackingDevice("EduGo-Device-03", "D1943FA2");
+    devices[3] = new TrackingDevice("EduGo-Device-04", "7C3A1B8F");
+    devices[4] = new TrackingDevice("EduGo-Device-05", "E50864D0");
+    devices[5] = new TrackingDevice("EduGo-Device-06", "6A92FE13");
+    devices[6] = new TrackingDevice("EduGo-Device-07", "09BC71E4");
+    devices[7] = new TrackingDevice("EduGo-Device-08", "3F84A65C");
+    devices[8] = new TrackingDevice("EduGo-Device-09", "B1E7D93A");
+    devices[9] = new TrackingDevice("EduGo-Device-10", "527CAB89");
+    
+    // Inicializar todos los dispositivos
+    for (int i = 0; i < 10; i++) {
+        devices[i]->initialize();
+        delay(1000);
+    }
+    
+    Serial.println("Dispositivos inicializados");
 }
 
-void loop()
-{
-  // Update the tracking device (handles all sensors and communication)
-  trackingDevice->update();
-
-  // Small delay to prevent overwhelming the system
-  delay(100);
+void loop() {
+    // Actualizar todos los dispositivos
+    for (int i = 0; i < 10; i++) {
+        devices[i]->update();
+    }
+    
+    delay(2000);
 }

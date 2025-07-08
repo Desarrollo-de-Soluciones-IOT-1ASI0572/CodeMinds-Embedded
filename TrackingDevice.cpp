@@ -1,123 +1,153 @@
 /**
  * @file TrackingDevice.cpp
- * @brief Implements the TrackingDevice class.
- *
- * A complete IoT device implementation that demonstrates the integration of multiple
- * sensors and communication capabilities using the Modest IoT Nano-framework.
- * Handles GPS tracking, RFID scanning, and data transmission.
- *
- * @author Angel Velasquez
- * @date March 22, 2025
- * @version 0.1
- */
-
-/*
- * This file is part of the Modest IoT Nano-framework (C++ Edition).
- * Copyright (c) 2025 Angel Velasquez
- *
- * Licensed under the Creative Commons Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0).
- * You may use, copy, and distribute this software in its original, unmodified form, provided
- * you give appropriate credit to the original author (Angel Velasquez) and include this notice.
- * Modifications, adaptations, or derivative works are not permitted.
- *
- * Full license text: https://creativecommons.org/licenses/by-nd/4.0/legalcode
+ * @brief Implementation of main tracking device for Wokwi
  */
 
 #include "TrackingDevice.h"
-#include <Arduino.h>
+#include "ModestIoT.h"
 
-TrackingDevice::TrackingDevice(int gpsRxPin, int gpsTxPin, int rfidPin,
-                               const String &wifiSSID, const String &wifiPassword,
-                               const String &trackingUrl, const String &rfidUrl,
-                               const String &deviceId)
-    : lastUpdate(0), updateInterval(1000)
+// Configuración para Wokwi
+#define WIFI_SSID "Wokwi-GUEST"
+#define WIFI_PASSWORD ""
+#define API_KEY "secret-api-key"
+
+// Endpoints para Wokwi (usando host.wokwi.internal)
+#define ENDPOINT_IAM "http://host.wokwi.internal:5000/api/v1/register"
+#define ENDPOINT_TRACKING "http://host.wokwi.internal:5000/api/v1/tracking"
+#define ENDPOINT_SENSOR_SCAN "http://host.wokwi.internal:5000/api/v1/sensor-scans"
+
+// Pins para Wokwi
+#define GPS_RX_PIN 16
+#define GPS_TX_PIN 17
+#define RFID_PIN 21
+
+TrackingDevice::TrackingDevice(const String &deviceId, const String &rfidCode)
+    : deviceId(deviceId), assignedRFID(rfidCode), lastUpdate(0), updateInterval(1000)
 {
+    // Inicializar componentes
+    gpsSensor = new GPSSensor(GPS_RX_PIN, GPS_TX_PIN, this);
+    rfidSensor = new RFIDSensor(RFID_PIN, rfidCode, deviceId, this);
 
-    // Initialize components with this device as event/command handler
-    gpsSensor = new GpsSensor(gpsRxPin, gpsTxPin, 10000, this);
-    rfidSensor = new RfidSensor(rfidPin, 5000, this);
-    commHandler = new CommunicationHandler(wifiSSID, wifiPassword, trackingUrl, rfidUrl, deviceId);
+    commHandler = new CommunicationHandler(deviceId, WIFI_SSID, WIFI_PASSWORD,
+                                           ENDPOINT_TRACKING, ENDPOINT_IAM,
+                                           ENDPOINT_SENSOR_SCAN, API_KEY);
+    currentRFIDCode = rfidCode;
+}
+
+void TrackingDevice::initialize()
+{
+    Serial.begin(9600);
+    Serial.println("=== CodeMinds Tracking Device - Wokwi Edition ===");
+    Serial.print("Device ID: ");
+    Serial.println(deviceId);
+    Serial.print("RFID Code: ");
+    Serial.println(assignedRFID);
+    Serial.println("Inicializando dispositivo...");
+
+    // Inicializar semilla para números aleatorios
+    randomSeed(analogRead(0));
+
+    // Conectar WiFi
+    Command connectCmd(CommandIds::CONNECT_WIFI);
+    handle(connectCmd);
+
+    if (commHandler->isWiFiConnected())
+    {
+        Command registerCmd(CommandIds::REGISTER_DEVICE);
+        handle(registerCmd);
+    }
+
+    Serial.println("Dispositivo listo para simulación!");
+    Serial.print("Device ID: ");
+    Serial.println(commHandler->getDeviceId());
 }
 
 void TrackingDevice::on(Event event)
 {
-    if (event == GpsSensor::GPS_DATA_EVENT)
+    switch (event.id)
     {
-        Serial.println("GPS data event received");
+    case RFIDEventIds::RFID_DETECTED:
+    {
+        Serial.print("RFID detectado - Device: ");
+        Serial.println(deviceId);
 
-        // Get GPS data and send it
-        GpsData gpsData = gpsSensor->getLastData();
-        if (gpsData.isValid && commHandler->isWiFiConnected())
+        RFIDData rfidData = rfidSensor->getLastDetection();
+        if (rfidData.isValid && commHandler->isWiFiConnected() && commHandler->isRegistered())
         {
-            commHandler->sendGpsData(gpsData);
+            currentRFIDCode = rfidData.rfidCode;
+
+            // Enviar sensor scan
+            bool scanSuccess = commHandler->sendSensorScan(rfidData);
+            if (scanSuccess)
+            {
+                Serial.println("✓ Sensor scan enviado exitosamente");
+            }
+            else
+            {
+                Serial.println("✗ Error al enviar sensor scan");
+            }
         }
+        break;
     }
-    else if (event == RfidSensor::RFID_DETECTED_EVENT)
+    case GPSEventIds::GPS_DATA_READY:
     {
-        Serial.println("RFID detection event received");
+        Serial.print("GPS data ready - Device: ");
+        Serial.println(deviceId);
 
-        // Get RFID data and send it
-        RfidData rfidData = rfidSensor->getLastDetection();
-        if (rfidData.isValid && commHandler->isWiFiConnected())
+        if (!currentRFIDCode.isEmpty() && commHandler->isWiFiConnected() && commHandler->isRegistered())
         {
-            commHandler->sendRfidData(rfidData);
+            GPSData gpsData = gpsSensor->getLastData();
+            if (gpsData.isValid)
+            {
+                bool trackingSuccess = commHandler->sendGPSData(gpsData, currentRFIDCode);
+                if (trackingSuccess)
+                {
+                    Serial.println("✓ Datos GPS enviados exitosamente");
+                }
+                else
+                {
+                    Serial.println("✗ Error al enviar datos GPS");
+                }
+            }
         }
+        break;
+    }
     }
 }
 
 void TrackingDevice::handle(Command command)
 {
-    // Forward commands to appropriate handlers
-    if (command == CommunicationHandler::CONNECT_WIFI_COMMAND)
-    {
-        commHandler->handle(command);
-    }
-}
-
-void TrackingDevice::initialize()
-{
-    Serial.println("Initializing Tracking Device...");
-
-    // Add RFID codes for simulation
-    rfidSensor->addRfidCode("A3F9B218");
-    rfidSensor->addRfidCode("6D2C4FA3");
-
-    // Connect to WiFi
-    handle(CommunicationHandler::CONNECT_WIFI_COMMAND);
-
-    // Indicate initialization complete
-
-    Serial.println("Tracking Device initialized successfully!");
+    commHandler->handle(command);
 }
 
 void TrackingDevice::update()
 {
     if (millis() - lastUpdate >= updateInterval)
     {
-        // Update sensors
-        gpsSensor->update();
+        // Actualizar sensores
         rfidSensor->update();
+        gpsSensor->update();
 
-        // Check communication status
+        // Verificar conexión
         commHandler->checkConnection();
 
         lastUpdate = millis();
     }
 }
 
-GpsSensor *TrackingDevice::getGpsSensor() const
+bool TrackingDevice::isConnected() const
 {
-    return gpsSensor;
+    return commHandler->isWiFiConnected();
 }
 
-RfidSensor *TrackingDevice::getRfidSensor() const
+String TrackingDevice::getAssignedRFID() const
 {
-    return rfidSensor;
+    return assignedRFID;
 }
 
-CommunicationHandler *TrackingDevice::getCommunicationHandler() const
+String TrackingDevice::getDeviceId() const
 {
-    return commHandler;
+    return deviceId;
 }
 
 TrackingDevice::~TrackingDevice()

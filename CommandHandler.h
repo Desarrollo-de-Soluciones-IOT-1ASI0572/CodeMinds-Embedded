@@ -3,52 +3,33 @@
 
 /**
  * @file CommandHandler.h
- * @brief Defines the Command structure and CommandHandler interface.
- * 
- * This file establishes the foundation for command-driven behavior in the Modest IoT Nano-framework.
- * The `Command` structure represents an action to be performed, and `CommandHandler` is an abstract
- * interface for classes that process commands, supporting a CQRS-inspired design.
- * 
- * @author Angel Velasquez
- * @date March 22, 2025
- * @version 0.1
- */
-
-/*
- * This file is part of the Modest IoT Nano-framework (C++ Edition).
- * Copyright (c) 2025 Angel Velasquez
+ * @brief Command handling system for ModestIoT Framework
  *
- * Licensed under the Creative Commons Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0).
- * You may use, copy, and distribute this software in its original, unmodified form, provided
- * you give appropriate credit to the original author (Angel Velasquez) and include this notice.
- * Modifications, adaptations, or derivative works are not permitted.
- * 
- * Full license text: https://creativecommons.org/licenses/by-nd/4.0/legalcode
+ * Define las estructuras y clases base para el manejo de comandos
+ * en el framework ModestIoT.
+ *
+ * @author CodeMinds (Wokwi Implementation)
+ * @date July 07, 2025
+ * @version 2.1
  */
 
-/**
- * @brief Represents a command with a unique identifier.
- * 
- * Commands are lightweight structs used to instruct devices or actuators to perform actions.
- * Define custom commands by assigning unique IDs in your application.
- */
-struct Command {
-    int id; ///< Unique identifier for the command type.
+#include <Arduino.h>
 
+// ================== COMMAND SYSTEM ==================
+// Command Structure
+struct Command
+{
+    int id;
     explicit Command(int commandId) : id(commandId) {}
-    bool operator==(const Command& other) const { return id == other.id; }
+    bool operator==(const Command &other) const { return id == other.id; }
 };
 
-/**
- * @brief Abstract interface for handling commands.
- * 
- * Implement this interface in classes that need to execute commands. The `handle` method is called
- * when a command is issued, allowing for custom execution logic.
- */
-class CommandHandler {
+// Command Handler Interface
+class CommandHandler
+{
 public:
-    virtual void handle(Command command) = 0; ///< Pure virtual method to process a command.
-    virtual ~CommandHandler() = default; ///< Virtual destructor for safe inheritance.
+    virtual void handle(Command command) = 0;
+    virtual ~CommandHandler() = default;
 };
 
 #endif // COMMAND_HANDLER_H
